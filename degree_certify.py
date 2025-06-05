@@ -39,7 +39,7 @@ import string
 from pathlib import Path
 
 RESEARCH_COURSES = {"PHY 680", "PHY 685", "PHY 690"}
-NON_CORE_ELECTIVE = {"PHY 510", "EAS 520"}
+NON_CORE_ELECTIVE = {"PHY 510", "EAS 502", "EAS 520"}
 
 if len(sys.argv) < 2:
     print("Usage: python3 degree_certify.py <transcript1.pdf> [<transcript2.pdf> ...]")
@@ -86,7 +86,16 @@ def extract_courses_and_student_info(pdf_path):
 
             lines = extract_column_text(page, left_col_bbox, right_col_bbox)
 
+# Track whether we're past the undergraduate section
+            if 'in_graduate_section' not in locals():
+                in_graduate_section = False
+
             for line in lines:
+                if not in_graduate_section:
+                    if "Beginning of Graduate Record" in line:
+                        in_graduate_section = True
+                    continue  # Skip everything before the marker
+
                 sem_match = re.match(r"\s*(\d{4})\s+(Fall|Spring|Sprng)", line)
                 if sem_match:
                     if buffer_special_topics:
