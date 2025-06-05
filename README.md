@@ -9,7 +9,7 @@ Written by Robert Fisher, 060525
 ## Features
 
 - Extracts and parses multi-column academic transcripts in PDF format  
-- Dynamically adapts to two-column layout structures  
+- Dynamically adapts to two-column transcript PDF layouts of any size  
 - Identifies semester, course codes, course titles, credits, grades, and classifications  
 - Categorizes courses into **Core**, **Elective**, and **Research** types using customizable rules  
 - Flags non-whitelisted courses from external departments  
