@@ -20,6 +20,30 @@ It performs the following tasks:
     - A minimum of 30 total graduate-level credits (500-level and above, including up to 6 credits of 400-level courses)
     - All non-PHY courses must be explicitly whitelisted as non-core electives (e.g., EAS 520); otherwise, certification fails
 
+ These criteria may be adjusted for other programs; see the comment regarding "certification logic" below.
+
+ Each line in the graduate section of the transcript is expected to follow a consistent format:
+
+     <DEPT> <COURSE_NUM>   <COURSE TITLE>   <Attempted Cr>  <Earned Cr>  <Grade>  <Points>
+
+ Example:
+     PHY 543   Quantum Mechanics I   3.00   3.00   A   4.000
+
+ - <DEPT> is a 3-letter department prefix (e.g., PHY, EAS)
+ - <COURSE_NUM> is a 3-digit course number (e.g., 543)
+ - <Description> is a text field, possibly containing spaces, with the course title (eg, "Quantum Mechanics I")
+ - <Attempted Cr> and <Earned Cr> are both floating-point numbers (e.g., 3.00)
+ - <Grade> is a letter grade (e.g., A, B+, C-)
+ - <Points> is a floating point value with three decimals for the number of quality points earned (= numerical grade * Earned Cr, e.g., 12.000 for an A in a 3-credit course)
+
+Special topics courses have a second following line with the format: "Course Topic: <topic description>".
+
+ Only lines following this structure and occurring after the line:
+     ---------- Beginning of Graduate Record ----------
+ are considered valid for certification analysis.
+
+Each semester appears as a line separated by whitespace, formatted as: "YYYY Fall|Spring". Program and plan are listed after each semester, prior to the text of the courses.
+
 Outputs:
 ---------
 - CSV for each student passing certification
@@ -39,7 +63,7 @@ import string
 from pathlib import Path
 
 RESEARCH_COURSES = {"PHY 680", "PHY 685", "PHY 690"}
-NON_CORE_ELECTIVE = {"PHY 510", "EAS 502", "EAS 520"}
+NON_CORE_ELECTIVE = {"PHY 510", "EAS 502", "EAS 520", "MTH 573"}
 
 if len(sys.argv) < 2:
     print("Usage: python3 degree_certify.py <transcript1.pdf> [<transcript2.pdf> ...]")
@@ -52,6 +76,7 @@ def get_course_level(course_code):
     match = re.search(r"\b(\d{3})\b", course_code)
     return int(match.group(1)) if match else None
 
+# The transcript is assumed to be have a two-column layout. We extract both.
 def extract_column_text(page, left_col_bbox, right_col_bbox):
     left_lines = page.crop(left_col_bbox).extract_text().splitlines() if page.crop(left_col_bbox).extract_text() else []
     right_lines = page.crop(right_col_bbox).extract_text().splitlines() if page.crop(right_col_bbox).extract_text() else []
@@ -85,6 +110,26 @@ def extract_courses_and_student_info(pdf_path):
                                 student_id = id_match.group(1).strip()
 
             lines = extract_column_text(page, left_col_bbox, right_col_bbox)
+
+# Each line in the graduate section of the transcript is expected to follow a consistent format,
+# typically structured as:
+#
+#     <DEPT> <COURSE_NUM>   <COURSE TITLE>   <Attempted Cr>  <Earned Cr>  <Grade>  <Points>
+#
+# Example:
+#     PHY 543   Quantum Mechanics I   3.00   3.00   A   4.000
+#
+# - <DEPT> is a 3-letter department prefix (e.g., PHY, EAS)
+# - <COURSE_NUM> is a 3-digit course number (e.g., 543)
+# - <Description> is a text field, possibly containing spaces, with the course title (eg, "Quantum Mechanics I")
+# - <Attempted Cr> and <Earned Cr> are both floating-point numbers (e.g., 3.00)
+# - <Grade> is a letter grade (e.g., A, B+, C-)
+# - <Points> is a floating point value with three decimals for the number of quality points earned (= numerical grade * Earned Cr, e.g., 12.000 for an A in a 3-credit course)
+#
+# Only lines following this structure and occurring after the line:
+#     ---------- Beginning of Graduate Record ----------
+# are considered valid for certification analysis.
+
 
 # Track whether we're past the undergraduate section
             if 'in_graduate_section' not in locals():
@@ -194,6 +239,8 @@ def generate_certification_csv_and_display(student_name, student_id, df, output_
             research_credits += credits
         if 400 <= level < 500:
             four_xx_credits += credits
+
+# This is where the certification logic is applied
 
     research_applied = min(6, research_credits)
     core_ok = core_credits >= 15
