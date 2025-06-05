@@ -88,6 +88,7 @@ def extract_courses_and_student_info(pdf_path):
     buffer_special_topics = None
     student_name = None
     student_id = None
+    in_graduate_section = False  # <-- initialize here, before the page loop
 
     with pdfplumber.open(pdf_path) as pdf:
         page_width = pdf.pages[0].width
@@ -131,9 +132,9 @@ def extract_courses_and_student_info(pdf_path):
 # are considered valid for certification analysis.
 
 
-# Track whether we're past the undergraduate section
-            if 'in_graduate_section' not in locals():
-                in_graduate_section = False
+# Track whether we're past the undergraduate section (commented out, as it doesn't maintain state across pages)
+#            if 'in_graduate_section' not in locals():
+#                in_graduate_section = False
 
             for line in lines:
                 if not in_graduate_section:
