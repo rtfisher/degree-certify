@@ -75,8 +75,8 @@ Certification PASSED. CSV saved to: output/aeinstein_ms_phy_track.csv
 Course Record:
  Semester | Course Code | Title                         | Credits | Classification | Grade
 ----------|-------------|-------------------------------|---------|----------------|-------
-   F23    | ABC 543     | Advanced Topic A              |   3.00  | Core           | A
-   S24    | ABC 690     | Graduate Research             |   6.00  | Research       | A-
+   F23    | ABC 543     | Quantum Mechanics             |   3.00  | Core           | B-
+   S24    | ABC 690     | Graduate Thesis               |   6.00  | Research       | A+
 ...
 
 Graduation Requirements:
