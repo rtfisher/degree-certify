@@ -41,7 +41,7 @@ These thresholds can be customized in the script's logic for use in any academic
 The tool supports transfer credits from other institutions. Transfer credits are detected when they appear **immediately before** the "Beginning of Graduate Record" marker in the transcript, introduced by a line such as:
 
 ```
-Transfer Credit from University of Massachusetts Dartmouth
+Transfer Credit from Swiss Federal Polytechnic School in Zurich 
 ```
 
 Transfer courses have a grade of "T" (no GPA impact) and follow the format:
