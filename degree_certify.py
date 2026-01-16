@@ -68,6 +68,7 @@ import re
 import sys
 import string
 from pathlib import Path
+from datetime import datetime
 
 RESEARCH_COURSES = {"PHY 680", "PHY 685", "PHY 690"}
 NON_CORE_ELECTIVE = {"PHY 510", "EAS 502", "EAS 520", "MTH 573", "DSC 520"}
@@ -340,7 +341,8 @@ def generate_certification_csv_and_display(student_name, student_id, df, output_
         "Research Applied": int(research_applied),
         "400-Level Credits": int(four_xx_credits),
         "Total Credits": int(total_credits),
-        "Certification": "Passed" if certification_ok else ("Failed (Invalid External Course)" if has_invalid_courses else "Failed")
+        "Certification": "Passed" if certification_ok else ("Failed (Invalid External Course)" if has_invalid_courses else "Failed"),
+        "Certification Date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     }
 
 # Main processing loop
@@ -368,7 +370,13 @@ for pdf_path in PDF_FILE_LIST:
 if summary_records:
     summary_df = pd.DataFrame(summary_records)
     summary_output_path = Path("output") / "certification_summary.csv"
-    summary_df.to_csv(summary_output_path, index=False)
-    print(f"\nSummary CSV saved to: {summary_output_path.resolve()}")
+    summary_output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Append to existing file or create new one with headers
+    file_exists = summary_output_path.exists()
+    summary_df.to_csv(summary_output_path, mode='a', index=False, header=not file_exists)
+
+    action = "appended to" if file_exists else "created"
+    print(f"\nSummary CSV {action}: {summary_output_path.resolve()}")
 else:
     print("No records processed successfully.")
