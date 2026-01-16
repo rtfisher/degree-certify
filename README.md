@@ -67,23 +67,32 @@ These credits are:
 python3 degree_certify.py transcript1.pdf transcript2.pdf transcript3.pdf
 ```
 
-- Pass one or more transcript PDF files as input.  
-- Outputs will be saved in the `output/` directory:  
-  - One `.csv` per student summarizing coursework and graduation checks  
-  - One cumulative `certification_summary.csv` listing all certification outcomes  
+- Pass one or more transcript PDF files as input.
+- Outputs will be saved in the `output/` directory:
+  - One `.csv` per student summarizing coursework and graduation checks
+  - One cumulative `certification_summary.csv` listing all certification outcomes
+
+### Options
+
+```bash
+python3 degree_certify.py --output-dir custom_output transcript.pdf
+```
+
+- `--output-dir`: Specify a custom output directory (default: `output/`)  
 
 ---
 
 ## Requirements
 
-- Python 3.7 or higher  
-- [pdfplumber](https://github.com/jsvine/pdfplumber)  
-- pandas  
+- Python 3.7 or higher
+- [pdfplumber](https://github.com/jsvine/pdfplumber)
+- pandas
+- reportlab (for test suite only)
 
 ### Install dependencies
 
 ```bash
-pip install pdfplumber pandas
+pip install -r requirements.txt
 ```
 
 ---
@@ -118,10 +127,46 @@ Graduation Requirements:
 
 ```
 .
-├── degree_certify.py         # Main script to run
-├── output/                   # Folder containing generated certification CSVs
-├── README.md                 # This file
+├── degree_certify.py              # Main certification script
+├── generate_test_transcripts.py   # Generates synthetic test PDFs
+├── run_tests.py                   # Test runner and validator
+├── requirements.txt               # Python dependencies
+├── .github/workflows/test.yml     # CI/CD workflow
+├── output/                        # Production certification output
+├── tests/                         # Generated test transcripts (gitignored)
+├── test_output/                   # Test certification output (gitignored)
+└── README.md                      # This file
 ```
+
+---
+
+## Testing
+
+The project includes a comprehensive test suite with synthetic transcripts covering all certification scenarios.
+
+### Running Tests Locally
+
+```bash
+python generate_test_transcripts.py   # Generate 8 synthetic PDF transcripts
+python run_tests.py                   # Run certification and validate results
+```
+
+### Test Cases
+
+| Test | Description | Expected |
+|------|-------------|----------|
+| pass_standard.pdf | Full undergrad + grad record | PASS |
+| pass_grad_only.pdf | Graduate record only | PASS |
+| pass_with_transfer.pdf | Includes transfer credits | PASS |
+| pass_excess_research.pdf | 9 research credits (6 applied) | PASS |
+| fail_insufficient_core.pdf | Only 12 core credits | FAIL |
+| fail_insufficient_total.pdf | Only 27 total credits | FAIL |
+| fail_excess_400level.pdf | 9 400-level credits | FAIL |
+| fail_invalid_course.pdf | Non-whitelisted BIO 520 | FAIL |
+
+### Continuous Integration
+
+Tests run automatically on push and pull request via GitHub Actions. The badge at the top of this README shows the current test status.
 
 ---
 
