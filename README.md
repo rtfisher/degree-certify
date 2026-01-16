@@ -1,3 +1,5 @@
+![Tests](https://github.com/rtfisher/degree-certify/actions/workflows/test.yml/badge.svg)
+
 # Graduate Degree Certification Tool
 
 This Python-based tool automates the certification process for graduate degree transcripts by parsing official PDF records and verifying whether students meet programmatic graduation requirements.

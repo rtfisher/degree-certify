@@ -67,17 +67,21 @@ import pandas as pd
 import re
 import sys
 import string
+import argparse
 from pathlib import Path
 from datetime import datetime
 
 RESEARCH_COURSES = {"PHY 680", "PHY 685", "PHY 690"}
 NON_CORE_ELECTIVE = {"PHY 510", "EAS 502", "EAS 520", "MTH 573", "DSC 520"}
 
-if len(sys.argv) < 2:
-    print("Usage: python3 degree_certify.py <transcript1.pdf> [<transcript2.pdf> ...]")
-    sys.exit(1)
+# Parse command-line arguments
+parser = argparse.ArgumentParser(description="Process graduate transcript PDFs and certify degree requirements.")
+parser.add_argument("transcripts", nargs="+", help="PDF transcript files to process")
+parser.add_argument("--output-dir", default="output", help="Output directory for certification results (default: output)")
+args = parser.parse_args()
 
-PDF_FILE_LIST = sys.argv[1:]
+PDF_FILE_LIST = args.transcripts
+OUTPUT_DIR = args.output_dir
 summary_records = []
 
 def get_course_level(course_code):
@@ -355,7 +359,7 @@ for pdf_path in PDF_FILE_LIST:
         
         if student_name and student_id and not course_df.empty:
             print("Calling generate_certification_csv_and_display...")
-            summary_row = generate_certification_csv_and_display(student_name, student_id, course_df)
+            summary_row = generate_certification_csv_and_display(student_name, student_id, course_df, output_dir=OUTPUT_DIR)
             print(f"Generated summary: {summary_row}")
             summary_records.append(summary_row)
         else:
@@ -369,7 +373,7 @@ for pdf_path in PDF_FILE_LIST:
 
 if summary_records:
     summary_df = pd.DataFrame(summary_records)
-    summary_output_path = Path("output") / "certification_summary.csv"
+    summary_output_path = Path(OUTPUT_DIR) / "certification_summary.csv"
     summary_output_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Append to existing file or create new one with headers
