@@ -63,7 +63,7 @@ import string
 from pathlib import Path
 
 RESEARCH_COURSES = {"PHY 680", "PHY 685", "PHY 690"}
-NON_CORE_ELECTIVE = {"PHY 510", "EAS 502", "EAS 520", "MTH 573"}
+NON_CORE_ELECTIVE = {"PHY 510", "EAS 502", "EAS 520", "MTH 573", "DSC 520"}
 
 if len(sys.argv) < 2:
     print("Usage: python3 degree_certify.py <transcript1.pdf> [<transcript2.pdf> ...]")
@@ -83,6 +83,7 @@ def extract_column_text(page, left_col_bbox, right_col_bbox):
     return left_lines + right_lines
 
 def extract_courses_and_student_info(pdf_path):
+    print(f"Opening PDF: {pdf_path}")
     course_records = []
     current_semester = ""
     buffer_special_topics = None
@@ -90,132 +91,114 @@ def extract_courses_and_student_info(pdf_path):
     student_id = None
     in_graduate_section = False  # <-- initialize here, before the page loop
 
-    with pdfplumber.open(pdf_path) as pdf:
-        page_width = pdf.pages[0].width
-        page_height = pdf.pages[0].height
-        left_col_bbox = (0, 0, page_width / 2, page_height)
-        right_col_bbox = (page_width / 2, 0, page_width, page_height)
+    try:
+        with pdfplumber.open(pdf_path) as pdf:
+            print(f"PDF opened successfully, {len(pdf.pages)} pages")
+            page_width = pdf.pages[0].width
+            page_height = pdf.pages[0].height
+            left_col_bbox = (0, 0, page_width / 2, page_height)
+            right_col_bbox = (page_width / 2, 0, page_width, page_height)
 
-        for page in pdf.pages:
-            if not student_name or not student_id:
-                full_text = page.extract_text()
-                if full_text:
-                    for line in full_text.splitlines():
-                        if not student_name:
-                            name_match = re.match(r"Name:\s+(.+)", line)
-                            if name_match:
-                                student_name = name_match.group(1).strip()
-                        if not student_id:
-                            id_match = re.match(r"Student ID:\s+(\d+)", line)
-                            if id_match:
-                                student_id = id_match.group(1).strip()
+            for page in pdf.pages:
+                if not student_name or not student_id:
+                    full_text = page.extract_text()
+                    if full_text:
+                        for line in full_text.splitlines():
+                            if not student_name:
+                                name_match = re.match(r"Name:\s+(.+)", line)
+                                if name_match:
+                                    student_name = name_match.group(1).strip()
+                            if not student_id:
+                                id_match = re.match(r"Student ID:\s+(\d+)", line)
+                                if id_match:
+                                    student_id = id_match.group(1).strip()
 
-            lines = extract_column_text(page, left_col_bbox, right_col_bbox)
+                lines = extract_column_text(page, left_col_bbox, right_col_bbox)
 
-# Each line in the graduate section of the transcript is expected to follow a consistent format,
-# typically structured as:
-#
-#     <DEPT> <COURSE_NUM>   <COURSE TITLE>   <Attempted Cr>  <Earned Cr>  <Grade>  <Points>
-#
-# Example:
-#     PHY 543   Quantum Mechanics I   3.00   3.00   A   4.000
-#
-# - <DEPT> is a 3-letter department prefix (e.g., PHY, EAS)
-# - <COURSE_NUM> is a 3-digit course number (e.g., 543)
-# - <Description> is a text field, possibly containing spaces, with the course title (eg, "Quantum Mechanics I")
-# - <Attempted Cr> and <Earned Cr> are both floating-point numbers (e.g., 3.00)
-# - <Grade> is a letter grade (e.g., A, B+, C-)
-# - <Points> is a floating point value with three decimals for the number of quality points earned (= numerical grade * Earned Cr, e.g., 12.000 for an A in a 3-credit course)
-#
-# Only lines following this structure and occurring after the line:
-#     ---------- Beginning of Graduate Record ----------
-# are considered valid for certification analysis.
+                for line in lines:
+                    if not in_graduate_section:
+                        if "Beginning of Graduate Record" in line:
+                            in_graduate_section = True
+                            print("Found graduate section marker")
+                        continue  # Skip everything before the marker
 
+                    sem_match = re.match(r"\s*(\d{4})\s+(Fall|Spring|Sprng)", line)
+                    if sem_match:
+                        if buffer_special_topics:
+                            course_records.append(buffer_special_topics)
+                            buffer_special_topics = None
+                        year = sem_match.group(1)[-2:]
+                        term = sem_match.group(2).replace("Sprng", "Spring")
+                        current_semester = f"{'F' if term == 'Fall' else 'S'}{year}"
 
-# Track whether we're past the undergraduate section (commented out, as it doesn't maintain state across pages)
-#            if 'in_graduate_section' not in locals():
-#                in_graduate_section = False
+                    course_match = re.search(
+                        r"([A-Z]{3}\s+\d+)\s+(.+?)\s+(\d\.\d{2})\s+(\d\.\d{2})\s+([A-F][+-]?)\s+(\d+\.\d{3})", line
+                    )
+                    if course_match:
+                        if buffer_special_topics:
+                            course_records.append(buffer_special_topics)
+                            buffer_special_topics = None
 
-            for line in lines:
-                if not in_graduate_section:
-                    if "Beginning of Graduate Record" in line:
-                        in_graduate_section = True
-                    continue  # Skip everything before the marker
+                        course_code = course_match.group(1).strip()
+                        title = course_match.group(2).strip()
+                        earned_credits = float(course_match.group(4))
+                        grade = course_match.group(5)
 
-                sem_match = re.match(r"\s*(\d{4})\s+(Fall|Spring|Sprng)", line)
-                if sem_match:
-                    if buffer_special_topics:
+                        prefix = course_code.split()[0]
+
+                        if course_code in NON_CORE_ELECTIVE:
+                            buffer_special_topics = {
+                                "Semester": current_semester,
+                                "Course Code": course_code,
+                                "Title": "Special Topics in Physics",
+                                "Credits Earned": earned_credits,
+                                "Grade": grade,
+                                "Classification": "Elective"
+                            }
+                        elif prefix == "PHY":
+                            classification = "Research" if course_code in RESEARCH_COURSES else "Core"
+                            course_records.append({
+                                "Semester": current_semester,
+                                "Course Code": course_code,
+                                "Title": title,
+                                "Credits Earned": earned_credits,
+                                "Grade": grade,
+                                "Classification": classification
+                            })
+                        else:
+                            course_records.append({
+                                "Semester": current_semester,
+                                "Course Code": course_code,
+                                "Title": title,
+                                "Credits Earned": earned_credits,
+                                "Grade": grade,
+                                "Classification": "Invalid"
+                            })
+
+                    elif "Course Topic:" in line and buffer_special_topics:
+                        topic = line.split("Course Topic:")[-1].strip()
+                        buffer_special_topics["Title"] = f"Special Topics: {topic}"
                         course_records.append(buffer_special_topics)
                         buffer_special_topics = None
-                    year = sem_match.group(1)[-2:]
-                    term = sem_match.group(2).replace("Sprng", "Spring")
-                    current_semester = f"{'F' if term == 'Fall' else 'S'}{year}"
 
-                course_match = re.search(
-                    r"([A-Z]{3}\s+\d+)\s+(.+?)\s+(\d\.\d{2})\s+(\d\.\d{2})\s+([A-F][+-]?)\s+(\d+\.\d{3})", line
-                )
-                if course_match:
-                    if buffer_special_topics:
-                        course_records.append(buffer_special_topics)
-                        buffer_special_topics = None
+        if buffer_special_topics:
+            course_records.append(buffer_special_topics)
 
-                    course_code = course_match.group(1).strip()
-                    title = course_match.group(2).strip()
-                    earned_credits = float(course_match.group(4))
-                    grade = course_match.group(5)
-
-                    prefix = course_code.split()[0]
-
-                    if course_code in NON_CORE_ELECTIVE:
-                        buffer_special_topics = {
-                            "Semester": current_semester,
-                            "Course Code": course_code,
-                            "Title": "Special Topics in Physics",
-                            "Credits Earned": earned_credits,
-                            "Grade": grade,
-                            "Classification": "Elective"
-                        }
-                    elif prefix == "PHY":
-                        classification = "Research" if course_code in RESEARCH_COURSES else "Core"
-                        course_records.append({
-                            "Semester": current_semester,
-                            "Course Code": course_code,
-                            "Title": title,
-                            "Credits Earned": earned_credits,
-                            "Grade": grade,
-                            "Classification": classification
-                        })
-                    else:
-                        course_records.append({
-                            "Semester": current_semester,
-                            "Course Code": course_code,
-                            "Title": title,
-                            "Credits Earned": earned_credits,
-                            "Grade": grade,
-                            "Classification": "Invalid"
-                        })
-
-                elif "Course Topic:" in line and buffer_special_topics:
-                    topic = line.split("Course Topic:")[-1].strip()
-                    buffer_special_topics["Title"] = f"Special Topics: {topic}"
-                    course_records.append(buffer_special_topics)
-                    buffer_special_topics = None
-
-    if buffer_special_topics:
-        course_records.append(buffer_special_topics)
-
-    return student_name, student_id, pd.DataFrame(course_records)
+        print(f"Found {len(course_records)} course records")
+        return student_name, student_id, pd.DataFrame(course_records)
+    
+    except Exception as e:
+        print(f"Error opening PDF: {e}")
+        import traceback
+        traceback.print_exc()
+        return None, None, pd.DataFrame()
 
 def generate_certification_csv_and_display(student_name, student_id, df, output_dir="output"):
-
-    if any(df["Classification"] == "Invalid"):
-        print(f"Certification FAILED for {student_name}: contains unapproved external courses.")
-        return {
-            "Student Name": student_name,
-            "Student ID": student_id,
-            "Certification": "Failed (Invalid External Course)"
-        }
-
+    print(f"Processing certification for {student_name}")
+    
+    # Check for invalid courses but continue processing
+    has_invalid_courses = any(df["Classification"] == "Invalid")
+    
     df = df[["Semester", "Course Code", "Title", "Credits Earned", "Classification", "Grade"]]
     df = df.sort_values(by=["Classification", "Semester", "Course Code"])
 
@@ -230,8 +213,9 @@ def generate_certification_csv_and_display(student_name, student_id, df, output_
         classification = row["Classification"]
         level = get_course_level(course_code)
 
-        if level is None or level < 400:
-            continue  # Skip <400-level courses
+        # Skip invalid courses and courses below 400 level for credit counting
+        if classification == "Invalid" or level is None or level < 400:
+            continue
 
         total_credits += credits
         if classification == "Core":
@@ -241,14 +225,13 @@ def generate_certification_csv_and_display(student_name, student_id, df, output_
         if 400 <= level < 500:
             four_xx_credits += credits
 
-# This is where the certification logic is applied
-
+    # This is where the certification logic is applied
     research_applied = min(6, research_credits)
     core_ok = core_credits >= 15
     total_ok = total_credits >= 30
     research_ok = research_applied <= 6
     four_xx_ok = four_xx_credits <= 6
-    certification_ok = all([core_ok, total_ok, research_ok, four_xx_ok])
+    certification_ok = all([core_ok, total_ok, research_ok, four_xx_ok]) and not has_invalid_courses
 
     summary_row = pd.DataFrame([{
         "Semester": "",
@@ -265,12 +248,17 @@ def generate_certification_csv_and_display(student_name, student_id, df, output_
     first_initial = names[0][0]
     clean_names = [n.strip(string.punctuation) for n in names if n.strip(string.punctuation).isalpha()]
     last_name = clean_names[-1] if clean_names else names[-1]
-    filename = f"{first_initial}{last_name}_ms_phy_track.csv"
+    # Include student ID in the filename for uniqueness
+    filename = f"{first_initial}{last_name}_{student_id}_ms_phy_track.csv"
 
     output_path = Path(output_dir) / filename
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
+    # Add certification status to header
+    certification_status = "CERTIFICATION PASSED" if certification_ok else "CERTIFICATION FAILED"
+    
     header_lines = [
+        ["STATUS", certification_status],  # Add clear status at the top
         ["Prepared by", "Robert Fisher"],
         ["Student Name", student_name],
         ["Student ID", quoted_id]
@@ -283,22 +271,41 @@ def generate_certification_csv_and_display(student_name, student_id, df, output_
         ["", "≥30 Total Credits", int(total_credits), "Verified" if total_ok else "Not Met"]
     ], columns=["", "Requirement", "Value", "Status"])
 
-    if certification_ok:
+    # Add invalid course requirement if applicable
+    if has_invalid_courses:
+        invalid_row = pd.DataFrame([
+            ["", "No Invalid External Courses", "FOUND", "Not Met"]
+        ], columns=["", "Requirement", "Value", "Status"])
+        requirements = pd.concat([requirements, invalid_row], ignore_index=True)
+
+    # Always generate CSV file regardless of certification status
+    try:
         with open(output_path, "w", newline='') as f:
             for row in header_lines:
                 f.write(",".join(row) + "\n")
             df_final.to_csv(f, index=False)
             f.write("\n")
             requirements.to_csv(f, index=False, header=False)
+            
+            # Add final status line at the bottom for extra clarity
+            f.write(f"\nFINAL STATUS,{certification_status}\n")
 
-        print(f"Certification PASSED. CSV saved to: {output_path.resolve()}")
-    else:
-        print("Certification FAILED. Requirements not met.")
+        if certification_ok:
+            print(f"Certification PASSED. CSV saved to: {output_path.resolve()}")
+        else:
+            failure_reason = "contains unapproved external courses" if has_invalid_courses else "does not meet degree requirements"
+            print(f"Certification FAILED for {student_name}: {failure_reason}")
+            print(f"CSV saved to: {output_path.resolve()}")
 
-    print("\nCourse Record:")
-    print(df_final.to_string(index=False))
-    print("\nGraduation Requirements:")
-    print(requirements.to_string(index=False))
+        print("\nCourse Record:")
+        print(df_final.to_string(index=False))
+        print("\nGraduation Requirements:")
+        print(requirements.to_string(index=False))
+
+    except Exception as e:
+        print(f"Error writing CSV file for {student_name}: {e}")
+        import traceback
+        traceback.print_exc()
 
     return {
         "Student Name": student_name,
@@ -307,20 +314,35 @@ def generate_certification_csv_and_display(student_name, student_id, df, output_
         "Research Applied": int(research_applied),
         "400-Level Credits": int(four_xx_credits),
         "Total Credits": int(total_credits),
-        "Certification": "Passed" if certification_ok else "Failed"
+        "Certification": "Passed" if certification_ok else ("Failed (Invalid External Course)" if has_invalid_courses else "Failed")
     }
 
+# Main processing loop
 for pdf_path in PDF_FILE_LIST:
-    student_name, student_id, course_df = extract_courses_and_student_info(pdf_path)
-    if student_name and student_id:
-        summary_row = generate_certification_csv_and_display(student_name, student_id, course_df)
-        summary_records.append(summary_row)
-    else:
-        print(f"Could not extract student name or ID from: {pdf_path}")
+    print(f"Processing: {pdf_path}")
+    try:
+        student_name, student_id, course_df = extract_courses_and_student_info(pdf_path)
+        print(f"Extracted - Name: {student_name}, ID: {student_id}")
+        print(f"Course dataframe shape: {course_df.shape}")
+        
+        if student_name and student_id and not course_df.empty:
+            print("Calling generate_certification_csv_and_display...")
+            summary_row = generate_certification_csv_and_display(student_name, student_id, course_df)
+            print(f"Generated summary: {summary_row}")
+            summary_records.append(summary_row)
+        else:
+            print(f"Could not extract student name or ID from: {pdf_path}")
+            if course_df.empty:
+                print("No course records found - check if 'Beginning of Graduate Record' marker exists")
+    except Exception as e:
+        print(f"Error processing {pdf_path}: {e}")
+        import traceback
+        traceback.print_exc()
 
 if summary_records:
     summary_df = pd.DataFrame(summary_records)
     summary_output_path = Path("output") / "certification_summary.csv"
     summary_df.to_csv(summary_output_path, index=False)
     print(f"\nSummary CSV saved to: {summary_output_path.resolve()}")
-
+else:
+    print("No records processed successfully.")
