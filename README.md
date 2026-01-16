@@ -127,6 +127,7 @@ Graduation Requirements:
 
 To adapt this tool for another department or set of rules:
 
+- Modify the parsing of the transcript file for other institutions as necessary
 - Update the `RESEARCH_COURSES` and `NON_CORE_ELECTIVE` sets in the script  
 - Adjust credit thresholds and classification logic as needed  
 - Consider modularizing the logic if using in multiple programs  
