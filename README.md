@@ -11,7 +11,8 @@ Written by Robert Fisher, 060525
 - Extracts and parses multi-column academic transcripts in PDF format  
 - Dynamically adapts to two-column transcript PDF layouts of any size  
 - Identifies semester, course codes, course titles, credits, grades, and classifications  
-- Categorizes courses into **Core**, **Elective**, and **Research** types using customizable rules  
+- Categorizes courses into **Core**, **Elective**, and **Research** types using customizable rules
+- Supports **transfer credits** (grade "T") from other institutions when appearing just before the graduate record
 - Flags non-whitelisted courses from external departments  
 - Excludes any courses numbered below a specified threshold (e.g., 400-level minimum)  
 - Limits the number of applied credits from specific course types (e.g., Research or 400-level)  
@@ -31,7 +32,28 @@ By default, a student transcript is certified if **all** of the following are me
 4. **Graduate Credit Requirement**: A minimum of 30 credits from valid graduate-level courses  
 5. **Valid Courses Only**: All non-departmental courses must be explicitly whitelisted; others are excluded  
 
-These thresholds can be customized in the script’s logic for use in any academic unit or graduate program.
+These thresholds can be customized in the script's logic for use in any academic unit or graduate program.
+
+---
+
+## Transfer Credits
+
+The tool supports transfer credits from other institutions. Transfer credits are detected when they appear **immediately before** the "Beginning of Graduate Record" marker in the transcript, introduced by a line such as:
+
+```
+Transfer Credit from University of Massachusetts Dartmouth
+```
+
+Transfer courses have a grade of "T" (no GPA impact) and follow the format:
+
+```
+PHY 412 Elec & Magnt Fields II 3.00 3.00 T 0.000
+```
+
+These credits are:
+- Included in the total credit count for degree certification
+- Marked with "(Transfer)" suffix in the output CSV
+- Classified as Core, Elective, or Research based on course code (same rules as regular courses)
 
 ---
 

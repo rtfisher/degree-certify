@@ -38,8 +38,15 @@ It performs the following tasks:
 
 Special topics courses have a second following line with the format: "Course Topic: <topic description>".
 
+Transfer credits may appear just before the "Beginning of Graduate Record" marker, introduced by a line like:
+    Transfer Credit from University of Massachusetts Dartmouth
+These courses have a "T" grade (no GPA impact) and format:
+    PHY 412 Elec & Magnt Fields II 3.00 3.00 T 0.000
+Transfer credits in this location are included in the graduate degree course count.
+
  Only lines following this structure and occurring after the line:
      ---------- Beginning of Graduate Record ----------
+ (or in the transfer credit section immediately preceding it)
  are considered valid for certification analysis.
 
 Each semester appears as a line separated by whitespace, formatted as: "YYYY Fall|Spring". Program and plan are listed after each semester, prior to the text of the courses.
@@ -90,6 +97,7 @@ def extract_courses_and_student_info(pdf_path):
     student_name = None
     student_id = None
     in_graduate_section = False  # <-- initialize here, before the page loop
+    in_transfer_section = False  # Track transfer credits section (just before graduate record)
 
     try:
         with pdfplumber.open(pdf_path) as pdf:
@@ -116,11 +124,24 @@ def extract_courses_and_student_info(pdf_path):
                 lines = extract_column_text(page, left_col_bbox, right_col_bbox)
 
                 for line in lines:
-                    if not in_graduate_section:
-                        if "Beginning of Graduate Record" in line:
+                    # Check for transfer credit section (appears just before graduate record)
+                    if not in_graduate_section and not in_transfer_section:
+                        if "Transfer Credit from" in line:
+                            in_transfer_section = True
+                            print(f"Found transfer credit section: {line}")
+                            continue
+                        elif "Beginning of Graduate Record" in line:
                             in_graduate_section = True
+                            in_transfer_section = False
                             print("Found graduate section marker")
-                        continue  # Skip everything before the marker
+                        continue  # Skip everything before transfer or graduate section
+
+                    # Transition from transfer section to graduate section
+                    if in_transfer_section and "Beginning of Graduate Record" in line:
+                        in_graduate_section = True
+                        in_transfer_section = False
+                        print("Found graduate section marker (ending transfer section)")
+                        continue
 
                     sem_match = re.match(r"\s*(\d{4})\s+(Fall|Spring|Sprng)", line)
                     if sem_match:
@@ -131,8 +152,9 @@ def extract_courses_and_student_info(pdf_path):
                         term = sem_match.group(2).replace("Sprng", "Spring")
                         current_semester = f"{'F' if term == 'Fall' else 'S'}{year}"
 
+                    # Match courses - include "T" grade for transfer credits
                     course_match = re.search(
-                        r"([A-Z]{3}\s+\d+)\s+(.+?)\s+(\d\.\d{2})\s+(\d\.\d{2})\s+([A-F][+-]?)\s+(\d+\.\d{3})", line
+                        r"([A-Z]{3}\s+\d+)\s+(.+?)\s+(\d\.\d{2})\s+(\d\.\d{2})\s+([A-FT][+-]?)\s+(\d+\.\d{3})", line
                     )
                     if course_match:
                         if buffer_special_topics:
@@ -143,14 +165,18 @@ def extract_courses_and_student_info(pdf_path):
                         title = course_match.group(2).strip()
                         earned_credits = float(course_match.group(4))
                         grade = course_match.group(5)
+                        is_transfer = (grade == "T")
 
                         prefix = course_code.split()[0]
+
+                        # Add "(Transfer)" suffix to title for transfer courses
+                        display_title = f"{title} (Transfer)" if is_transfer else title
 
                         if course_code in NON_CORE_ELECTIVE:
                             buffer_special_topics = {
                                 "Semester": current_semester,
                                 "Course Code": course_code,
-                                "Title": "Special Topics in Physics",
+                                "Title": "Special Topics in Physics" + (" (Transfer)" if is_transfer else ""),
                                 "Credits Earned": earned_credits,
                                 "Grade": grade,
                                 "Classification": "Elective"
@@ -160,7 +186,7 @@ def extract_courses_and_student_info(pdf_path):
                             course_records.append({
                                 "Semester": current_semester,
                                 "Course Code": course_code,
-                                "Title": title,
+                                "Title": display_title,
                                 "Credits Earned": earned_credits,
                                 "Grade": grade,
                                 "Classification": classification
@@ -169,7 +195,7 @@ def extract_courses_and_student_info(pdf_path):
                             course_records.append({
                                 "Semester": current_semester,
                                 "Course Code": course_code,
-                                "Title": title,
+                                "Title": display_title,
                                 "Credits Earned": earned_credits,
                                 "Grade": grade,
                                 "Classification": "Invalid"
