@@ -102,7 +102,9 @@ def extract_courses_and_student_info(pdf_path):
     student_name = None
     student_id = None
     in_graduate_section = False  # <-- initialize here, before the page loop
-    in_transfer_section = False  # Track transfer credits section (just before graduate record)
+    in_potential_transfer_section = False  # Track potential transfer credits (buffered until confirmed)
+    transfer_buffer = []  # Buffer to hold potential transfer courses until we confirm they precede graduate record
+    transfer_semester = ""  # Track semester for buffered transfer courses
 
     try:
         with pdfplumber.open(pdf_path) as pdf:
@@ -129,29 +131,41 @@ def extract_courses_and_student_info(pdf_path):
                 lines = extract_column_text(page, left_col_bbox, right_col_bbox)
 
                 for line in lines:
-                    # Check for transfer credit section (appears just before graduate record)
-                    if not in_graduate_section and not in_transfer_section:
-                        if "Transfer Credit from" in line:
-                            in_transfer_section = True
-                            print(f"Found transfer credit section: {line}")
-                            continue
-                        elif "Beginning of Graduate Record" in line:
-                            in_graduate_section = True
-                            in_transfer_section = False
-                            print("Found graduate section marker")
-                        continue  # Skip everything before transfer or graduate section
-
-                    # Transition from transfer section to graduate section
-                    if in_transfer_section and "Beginning of Graduate Record" in line:
+                    # Check for beginning of graduate record - this confirms any buffered transfer credits
+                    if "Beginning of Graduate Record" in line:
+                        # Commit any buffered transfer courses - they immediately preceded the graduate record
+                        if transfer_buffer:
+                            print(f"Committing {len(transfer_buffer)} transfer courses to graduate record")
+                            course_records.extend(transfer_buffer)
+                            transfer_buffer = []
                         in_graduate_section = True
-                        in_transfer_section = False
-                        print("Found graduate section marker (ending transfer section)")
+                        in_potential_transfer_section = False
+                        print("Found graduate section marker")
                         continue
+
+                    # Check for transfer credit section - buffer courses until we confirm they precede graduate record
+                    if not in_graduate_section:
+                        if "Transfer Credit from" in line:
+                            # New transfer section - clear any previous buffer (it wasn't followed by graduate record)
+                            if transfer_buffer:
+                                print(f"Discarding {len(transfer_buffer)} buffered courses (not followed by graduate record)")
+                            transfer_buffer = []
+                            in_potential_transfer_section = True
+                            transfer_semester = ""  # Reset semester for new transfer section
+                            print(f"Found potential transfer credit section: {line}")
+                            continue
+
+                        # If not in potential transfer section, skip this line
+                        if not in_potential_transfer_section:
+                            continue
+
+                    # Determine which list to add courses to
+                    target_list = transfer_buffer if (in_potential_transfer_section and not in_graduate_section) else course_records
 
                     sem_match = re.match(r"\s*(\d{4})\s+(Fall|Spring|Sprng)", line)
                     if sem_match:
                         if buffer_special_topics:
-                            course_records.append(buffer_special_topics)
+                            target_list.append(buffer_special_topics)
                             buffer_special_topics = None
                         year = sem_match.group(1)[-2:]
                         term = sem_match.group(2).replace("Sprng", "Spring")
@@ -163,7 +177,7 @@ def extract_courses_and_student_info(pdf_path):
                     )
                     if course_match:
                         if buffer_special_topics:
-                            course_records.append(buffer_special_topics)
+                            target_list.append(buffer_special_topics)
                             buffer_special_topics = None
 
                         course_code = course_match.group(1).strip()
@@ -188,7 +202,7 @@ def extract_courses_and_student_info(pdf_path):
                             }
                         elif prefix == "PHY":
                             classification = "Research" if course_code in RESEARCH_COURSES else "Core"
-                            course_records.append({
+                            target_list.append({
                                 "Semester": current_semester,
                                 "Course Code": course_code,
                                 "Title": display_title,
@@ -197,7 +211,7 @@ def extract_courses_and_student_info(pdf_path):
                                 "Classification": classification
                             })
                         else:
-                            course_records.append({
+                            target_list.append({
                                 "Semester": current_semester,
                                 "Course Code": course_code,
                                 "Title": display_title,
@@ -209,7 +223,7 @@ def extract_courses_and_student_info(pdf_path):
                     elif "Course Topic:" in line and buffer_special_topics:
                         topic = line.split("Course Topic:")[-1].strip()
                         buffer_special_topics["Title"] = f"Special Topics: {topic}"
-                        course_records.append(buffer_special_topics)
+                        target_list.append(buffer_special_topics)
                         buffer_special_topics = None
 
         if buffer_special_topics:

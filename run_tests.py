@@ -49,6 +49,10 @@ TEST_CASES = {
         "expected_pass": False,
         "description": "Contains non-whitelisted external course (BIO 520)"
     },
+    "pass_undergrad_transfer_ignored.pdf": {
+        "expected_pass": True,
+        "description": "Undergrad transfer credits ignored, only grad transfer credits counted"
+    },
 }
 
 
@@ -115,7 +119,7 @@ def run_all_tests():
         # Extract student ID from filename (last 3 digits of test number -> 9999000X)
         student_id = f"9999000{test_num}"
 
-        print(f"\n[Test {test_num}/8] {pdf_name}")
+        print(f"\n[Test {test_num}/{len(TEST_CASES)}] {pdf_name}")
         print(f"  Description: {description}")
         print(f"  Expected: {'PASS' if expected_pass else 'FAIL'}")
 
@@ -187,7 +191,7 @@ def run_all_tests():
     error_count = sum(1 for r in results if r["status"] == "ERROR")
     mismatch_count = sum(1 for r in results if r["status"] == "MISMATCH")
 
-    print(f"  Passed: {ok_count}/8")
+    print(f"  Passed: {ok_count}/{len(TEST_CASES)}")
     print(f"  Errors: {error_count}")
     print(f"  Mismatches: {mismatch_count}")
 

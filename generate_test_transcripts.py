@@ -3,7 +3,7 @@
 generate_test_transcripts.py
 
 Generates synthetic PDF transcripts for testing degree_certify.py.
-Creates 8 test cases: 4 passing and 4 failing certification scenarios.
+Creates 9 test cases: 5 passing and 4 failing certification scenarios.
 
 Transcripts use a realistic two-column layout matching actual university transcripts.
 """
@@ -386,12 +386,26 @@ class TranscriptGenerator:
         self._advance_y(0.15 * inch)
 
     def draw_undergrad_record(self, semesters=None, award_degree=True,
-                               confer_date="May 2023", honours=None):
-        """Draw undergraduate academic record with optional degree awarded section."""
+                               confer_date="May 2023", honours=None,
+                               transfer_credits=None, transfer_institution=None):
+        """Draw undergraduate academic record with optional degree awarded section.
+
+        Args:
+            semesters: List of semester data dicts
+            award_degree: Whether to include degree awarded section
+            confer_date: Degree conferral date
+            honours: Honours designation (e.g., "Magna Cum Laude")
+            transfer_credits: Optional list of transfer credit courses for undergrad
+            transfer_institution: Institution name for undergrad transfer credits
+        """
         if semesters is None:
             semesters = UNDERGRAD_SEMESTERS
 
         self._draw_section_marker("Beginning of Undergraduate Record")
+
+        # Draw undergraduate transfer credits first (if any)
+        if transfer_credits and transfer_institution:
+            self.draw_transfer_section(transfer_institution, transfer_credits)
 
         for sem_data in semesters:
             self.draw_semester(sem_data['term'], sem_data['courses'])
@@ -423,16 +437,35 @@ class TranscriptGenerator:
 def create_transcript(filename, student_name, student_id, grad_semesters,
                       include_undergrad=True, transfer_courses=None,
                       transfer_institution=None, undergrad_honours=None,
-                      undergrad_confer_date="May 2023"):
-    """Create a complete transcript PDF."""
+                      undergrad_confer_date="May 2023",
+                      undergrad_transfer_courses=None,
+                      undergrad_transfer_institution=None):
+    """Create a complete transcript PDF.
+
+    Args:
+        filename: Output PDF path
+        student_name: Student's full name
+        student_id: Student ID number
+        grad_semesters: List of graduate semester data
+        include_undergrad: Whether to include undergraduate record
+        transfer_courses: Graduate transfer credits (immediately before grad record)
+        transfer_institution: Institution for graduate transfer credits
+        undergrad_honours: Honours designation for undergrad degree
+        undergrad_confer_date: Undergrad degree conferral date
+        undergrad_transfer_courses: Undergrad transfer credits (should be ignored by certifier)
+        undergrad_transfer_institution: Institution for undergrad transfer credits
+    """
     gen = TranscriptGenerator(filename, student_name, student_id)
 
     if include_undergrad:
         gen.draw_undergrad_record(
             confer_date=undergrad_confer_date,
-            honours=undergrad_honours
+            honours=undergrad_honours,
+            transfer_credits=undergrad_transfer_courses,
+            transfer_institution=undergrad_transfer_institution
         )
 
+    # Graduate transfer credits appear immediately before graduate record
     if transfer_courses and transfer_institution:
         gen.draw_transfer_section(transfer_institution, transfer_courses)
 
@@ -764,7 +797,64 @@ def generate_all_test_transcripts():
         grad_8, include_undergrad=True
     )
 
-    print(f"\nGenerated 8 test transcripts in {output_dir}/")
+    # 9. pass_undergrad_transfer_ignored.pdf - Has undergrad transfer credits that should be ignored
+    # Tests that only graduate transfer credits (immediately before grad record) are counted
+    # Undergrad transfers from "Bristol Community College" should be ignored
+    # Grad transfers from "Other State University" should be counted
+    # 15 core + 3 grad transfer core + 6 elective + 6 research = 30 total
+    grad_9 = [
+        {
+            'term': '2023 Fall',
+            'courses': [
+                {'dept': 'PHY', 'num': '543', 'title': 'Quantum Mechanics I', 'credits': 3, 'grade': 'A'},
+                {'dept': 'PHY', 'num': '561', 'title': 'Classical Mechanics', 'credits': 3, 'grade': 'A'},
+            ]
+        },
+        {
+            'term': '2024 Spring',
+            'courses': [
+                {'dept': 'PHY', 'num': '544', 'title': 'Quantum Mechanics II', 'credits': 3, 'grade': 'A'},
+                {'dept': 'PHY', 'num': '521', 'title': 'Electrodynamics I', 'credits': 3, 'grade': 'A'},
+            ]
+        },
+        {
+            'term': '2024 Fall',
+            'courses': [
+                {'dept': 'PHY', 'num': '522', 'title': 'Electrodynamics II', 'credits': 3, 'grade': 'A'},
+                {'dept': 'PHY', 'num': '510', 'title': 'Mathematical Methods', 'credits': 3, 'grade': 'A'},
+                {'dept': 'EAS', 'num': '520', 'title': 'Earth System Science', 'credits': 3, 'grade': 'A'},
+            ]
+        },
+        {
+            'term': '2025 Spring',
+            'courses': [
+                {'dept': 'PHY', 'num': '690', 'title': 'Graduate Thesis', 'credits': 6, 'grade': 'A'},
+            ]
+        },
+    ]
+    # Undergraduate transfer credits - these should be IGNORED by certifier
+    # (they don't immediately precede the graduate record marker)
+    undergrad_transfer_9 = [
+        {'dept': 'MTH', 'num': '151', 'title': 'Calculus I', 'credits': 4},
+        {'dept': 'MTH', 'num': '152', 'title': 'Calculus II', 'credits': 4},
+        {'dept': 'ENG', 'num': '101', 'title': 'Composition I', 'credits': 3},
+    ]
+    # Graduate transfer credits - these should be INCLUDED
+    # (they immediately precede the graduate record marker)
+    grad_transfer_9 = [
+        {'dept': 'PHY', 'num': '571', 'title': 'Statistical Mechanics', 'credits': 3},
+    ]
+    create_transcript(
+        output_dir / "pass_undergrad_transfer_ignored.pdf",
+        "Test Student 009", "99990009",
+        grad_9, include_undergrad=True,
+        transfer_courses=grad_transfer_9,
+        transfer_institution="Other State University",
+        undergrad_transfer_courses=undergrad_transfer_9,
+        undergrad_transfer_institution="Bristol Community College"
+    )
+
+    print(f"\nGenerated 9 test transcripts in {output_dir}/")
 
 
 if __name__ == "__main__":
