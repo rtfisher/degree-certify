@@ -5,6 +5,13 @@ test_output/
 # Output directory
 output/
 
+# Local interactive rulebooks (per-installation decisions)
+course_classifications.json
+single_count.json
+
+# Real student transcripts must never be committed (PII)
+*.pdf
+
 # Python
 __pycache__/
 *.py[cod]

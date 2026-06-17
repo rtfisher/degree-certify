@@ -59,6 +59,37 @@ These credits are:
 
 ---
 
+## Interactive classification (`--interactive`)
+
+By default the tool runs **non-interactively**, classifying courses from the saved rulebook plus defaults. Pass `--interactive` to open a cursor-driven terminal UI that shows every course in one table:
+
+- **↑/↓** — move the cursor between courses
+- **c / e / r / x** — set the highlighted course to Core / Elective / Research / Exclude
+- **←/→** — cycle the highlighted course's classification
+- **s** — save and continue, **q** — quit without saving
+
+The Core/Total/Research/400-level credits and a PASS/FAIL banner update live after every change. Every course is editable (including PHY-core and whitelisted electives); special-topics and external courses still on their default are flagged `● review`, and courses with a saved decision show `✎ saved`. For EAS PhD students a second screen lets you toggle (Space) which applied courses are single-counted.
+
+Decisions persist to `course_classifications.json`, keyed on `COURSE | Topic` for special topics (e.g. `PHY 510 | Quantum Field` → Core) and on the course code otherwise, so a topic later upgraded to a core course is applied automatically on every future run. The file is plain JSON and can be edited by hand. Courses graded `P`, `IP`, or blank (dissertation/seminar/research) are ignored automatically and never appear as editable.
+
+## EAS PhD Students (M.S. Physics en route)
+
+EAS PhD students may earn the M.S. Physics on the way to the doctorate and are permitted to **double-count up to 24 credits** between the two degrees. **EAS PhD mode is auto-detected** from the transcript's graduate `Plan:` line (the Engineering & Applied Science PhD program); use `--eas-phd` to force it on or `--no-eas-phd` to force it off. The detected/forced track is printed for each transcript.
+
+```bash
+python3 degree_certify.py --interactive transcript.pdf   # EAS mode auto-detected; opens the editor
+```
+
+In EAS PhD mode:
+- **Lenient externals.** Non-PHY PhD courses (research/seminar/minor) default to *Exclude* instead of failing certification.
+- **Single-count designation.** For a student who otherwise certifies, the **fewest** courses needed are reserved as **single-counted** (M.S.-only) so that no more than 24 credits are double-counted (with a 30-credit M.S., that's just 6 credits / 2 courses). In `--interactive` mode you can adjust which courses — reserve credits the PhD will not need. This is **reported on the certificate, not enforced as a failure**, and the single-counted courses are flagged with an `M.S.-only` column in the per-student CSV. Selections persist per student in `single_count.json`.
+
+Both rulebook files are gitignored (per-installation state). A non-interactive run reproduces a prior interactive run's decisions with no prompts.
+
+## Resuming from a prior certification
+
+If a per-student certification CSV already exists in the output directory (`{initial}{lastname}_{id}_ms_phy_track.csv`), the tool **automatically resumes from it**: each course's classification and the single-counted (M.S.-only) selection are restored from that file before re-certifying. This makes the CSV the durable per-student record — re-running picks up exactly where you left off even if the shared rulebook has since changed. A resumed student uses a private classification map and does **not** write back to the shared `course_classifications.json`. Delete the student's CSV to start that student fresh.
+
 ## Usage
 
 ### Command-Line
@@ -78,7 +109,9 @@ python3 degree_certify.py transcript1.pdf transcript2.pdf transcript3.pdf
 python3 degree_certify.py --output-dir custom_output transcript.pdf
 ```
 
-- `--output-dir`: Specify a custom output directory (default: `output/`)  
+- `--output-dir`: Specify a custom output directory (default: `output/`)
+- `--interactive`: Open the rich TUI to classify/revise courses (and choose single-counted credits for EAS PhD). Decisions are saved to the rulebook (`course_classifications.json`) and reused automatically on later runs.
+- `--eas-phd` / `--no-eas-phd`: Force EAS PhD mode on/off. By default it is auto-detected from the transcript's graduate `Plan:` line (see below).
 
 ---
 
@@ -87,6 +120,7 @@ python3 degree_certify.py --output-dir custom_output transcript.pdf
 - Python 3.7 or higher
 - [pdfplumber](https://github.com/jsvine/pdfplumber)
 - pandas
+- [rich](https://github.com/Textualize/rich) (for the `--interactive` TUI)
 - reportlab (for test suite only)
 
 ### Install dependencies
@@ -147,9 +181,11 @@ The project includes a comprehensive test suite with synthetic transcripts cover
 ### Running Tests Locally
 
 ```bash
-python generate_test_transcripts.py   # Generate 8 synthetic PDF transcripts
+python generate_test_transcripts.py   # Generate 10 synthetic PDF transcripts
 python run_tests.py                   # Run certification and validate results
 ```
+
+All test transcripts are wholly synthetic (invented students, course numbers, and titles) with no connection to any real student record.
 
 ### Test Cases
 
@@ -163,6 +199,8 @@ python run_tests.py                   # Run certification and validate results
 | fail_insufficient_total.pdf | Only 27 total credits | FAIL |
 | fail_excess_400level.pdf | 9 400-level credits | FAIL |
 | fail_invalid_course.pdf | Non-whitelisted BIO 520 | FAIL |
+| pass_undergrad_transfer_ignored.pdf | Undergrad transfer credits ignored | PASS |
+| pass_eas_phd.pdf | EAS PhD M.S.-en-route; `--eas-phd` with rulebook-upgraded core topics, P/blank research ignored | PASS |
 
 ### Continuous Integration
 

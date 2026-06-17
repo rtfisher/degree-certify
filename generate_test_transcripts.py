@@ -3,7 +3,8 @@
 generate_test_transcripts.py
 
 Generates synthetic PDF transcripts for testing degree_certify.py.
-Creates 9 test cases: 5 passing and 4 failing certification scenarios.
+Creates 10 test cases: 5 passing and 4 failing M.S. scenarios, plus 1 EAS PhD
+student certifying the M.S. Physics en route.
 
 Transcripts use a realistic two-column layout matching actual university transcripts.
 """
@@ -238,14 +239,25 @@ class TranscriptGenerator:
         self._advance_y(0.15 * inch)
 
     def _draw_course_line(self, course, is_transfer=False):
-        """Draw a single course line."""
-        self._check_page_break(0.18 * inch)
+        """Draw a single course line.
+
+        Supports optional keys:
+          'earned' - earned credits if different from attempted (e.g. 0 for in-progress)
+          'grade'  - any string; non-letter grades like 'P', 'IP', or '' (blank)
+                     produce lines the certifier intentionally ignores
+          'topic'  - draws a following "Course Topic: <topic>" line (special topics)
+        """
+        # Reserve extra height when a "Course Topic:" line follows so the course and
+        # its topic never split across a column/page boundary.
+        topic = course.get('topic')
+        self._check_page_break(0.33 * inch if topic else 0.18 * inch)
         x = self._get_current_x()
         y = self._get_current_y()
 
         grade = 'T' if is_transfer else course.get('grade', 'A')
         credits = course['credits']
-        points = 0.0 if is_transfer else grade_to_points(grade) * credits
+        earned = course.get('earned', credits)
+        points = 0.0 if is_transfer else grade_to_points(grade) * earned
 
         self.c.setFont("Helvetica", 8)
         self.c.drawString(x, y, f"{course['dept']} {course['num']}")
@@ -253,12 +265,18 @@ class TranscriptGenerator:
         title = course['title'][:18]
         self.c.drawString(x + 0.55 * inch, y, title)
         self.c.drawString(x + 2.0 * inch, y, f"{credits:.2f}")
-        self.c.drawString(x + 2.4 * inch, y, f"{credits:.2f}")
+        self.c.drawString(x + 2.4 * inch, y, f"{earned:.2f}")
         self.c.drawString(x + 2.75 * inch, y, grade)
         self.c.drawString(x + 3.1 * inch, y, f"{points:.3f}")
         self._advance_y(0.15 * inch)
 
-        return credits, credits, points
+        if topic:
+            ty = self._get_current_y()
+            self.c.setFont("Helvetica", 7)
+            self.c.drawString(x + 0.2 * inch, ty, f"Course Topic: {topic}")
+            self._advance_y(0.15 * inch)
+
+        return credits, earned, points
 
     def _draw_term_totals(self, term_attempted, term_earned, term_points):
         """Draw term GPA and totals."""
@@ -297,8 +315,9 @@ class TranscriptGenerator:
 
     def draw_semester(self, term, courses, is_transfer=False):
         """Draw a complete semester block."""
-        # Estimate height needed for this semester
-        needed_height = 0.5 * inch + len(courses) * 0.15 * inch + 0.4 * inch
+        # Estimate height needed for this semester (topic lines add an extra row each)
+        topic_rows = sum(1 for c in courses if c.get('topic'))
+        needed_height = 0.5 * inch + (len(courses) + topic_rows) * 0.15 * inch + 0.4 * inch
         self._check_page_break(needed_height)
 
         self._draw_semester_header(term)
@@ -418,12 +437,33 @@ class TranscriptGenerator:
                 honours=honours
             )
 
-    def draw_graduate_record(self, semesters):
-        """Draw graduate academic record. Resets cumulative totals for new career."""
+    def draw_program_plan(self, program, plan, subplan=None):
+        """Draw a Program/Plan/Subplan block (used to exercise EAS PhD auto-detection)."""
+        self._check_page_break(0.5 * inch)
+        x = self._get_current_x()
+        entries = [("Program", program), ("Plan", plan)]
+        if subplan:
+            entries.append(("Subplan", subplan))
+        self.c.setFont("Helvetica", 7)
+        for label, value in entries:
+            y = self._get_current_y()
+            self.c.drawString(x, y, f"{label}: {value}")
+            self._advance_y(0.13 * inch)
+        self._advance_y(0.05 * inch)
+
+    def draw_graduate_record(self, semesters, program_plans=None):
+        """Draw graduate academic record. Resets cumulative totals for new career.
+
+        program_plans: optional list of (program, plan[, subplan]) tuples drawn right
+        after the marker so EAS PhD auto-detection (which keys on the Plan line) fires.
+        """
         # Reset cumulative totals when entering graduate program
         self._reset_cumulative_totals()
 
         self._draw_section_marker("Beginning of Graduate Record")
+
+        for block in (program_plans or []):
+            self.draw_program_plan(*block)
 
         for sem_data in semesters:
             self.draw_semester(sem_data['term'], sem_data['courses'])
@@ -439,7 +479,8 @@ def create_transcript(filename, student_name, student_id, grad_semesters,
                       transfer_institution=None, undergrad_honours=None,
                       undergrad_confer_date="May 2023",
                       undergrad_transfer_courses=None,
-                      undergrad_transfer_institution=None):
+                      undergrad_transfer_institution=None,
+                      grad_program_plans=None):
     """Create a complete transcript PDF.
 
     Args:
@@ -469,12 +510,12 @@ def create_transcript(filename, student_name, student_id, grad_semesters,
     if transfer_courses and transfer_institution:
         gen.draw_transfer_section(transfer_institution, transfer_courses)
 
-    gen.draw_graduate_record(grad_semesters)
+    gen.draw_graduate_record(grad_semesters, program_plans=grad_program_plans)
     gen.save()
 
 
 def generate_all_test_transcripts():
-    """Generate all 8 test transcript PDFs."""
+    """Generate all 10 test transcript PDFs."""
 
     output_dir = Path("tests")
 
@@ -558,7 +599,9 @@ def generate_all_test_transcripts():
     create_transcript(
         output_dir / "pass_grad_only.pdf",
         "Test Student 002", "99990002",
-        grad_2, include_undergrad=False
+        grad_2, include_undergrad=False,
+        # Physics-only program/plan: must NOT trigger EAS PhD auto-detection.
+        grad_program_plans=[("Physics Graduate", "Physics Program of Study")]
     )
 
     # 3. pass_with_transfer.pdf - Includes transfer credits section
@@ -854,7 +897,84 @@ def generate_all_test_transcripts():
         undergrad_transfer_institution="Bristol Community College"
     )
 
-    print(f"\nGenerated 9 test transcripts in {output_dir}/")
+    # 10. pass_eas_phd.pdf - EAS PhD student certifying the M.S. Physics en route.
+    # This is a wholly synthetic curriculum (invented course numbers, titles, and
+    # topics) that exercises the same logic as a real EAS PhD case WITHOUT reusing
+    # any course from an actual student transcript:
+    #   - PHY special-topics courses (PHY 595), two of which are upgraded to Core via
+    #     the seeded rulebook; the rest default to Elective.
+    #   - Non-PHY PhD courses (GEO/BIO/CHE) that must be Excluded (not failed) under
+    #     --eas-phd rather than treated as Invalid.
+    #   - Research/seminar/dissertation lines graded P or blank that must be ignored
+    #     automatically (including a PHY-prefixed one, to prove the grade gate works).
+    # Must be run with --eas-phd and a rulebook mapping the two upgraded topics to
+    # Core (see run_tests.py).
+    #   Core (15): PHY 545, PHY 562, PHY 631 + PHY 595 (Topological Phases, Holographic Duality)
+    #   Elective (18): PHY 595 (Stochastic Dynamics, Nonlinear Optics, Plasma Astrophysics,
+    #                  Quantum Transport) + EAS 520 + MTH 573
+    #   Excluded: GEO 610, BIO 540, CHE 525    Ignored: PHY 699 (P), GRD 700 (P), EAS 712 (blank)
+    #   => 15 core / 33 total / 0 research / 0 400-level => PASS; 24 double-counted, 9 single-counted
+    grad_10 = [
+        {
+            'term': '2022 Fall',
+            'courses': [
+                {'dept': 'PHY', 'num': '545', 'title': 'Advanced Dynamics', 'credits': 3, 'grade': 'A'},
+                {'dept': 'PHY', 'num': '562', 'title': 'Methods of Theor Phys', 'credits': 3, 'grade': 'A'},
+                {'dept': 'EAS', 'num': '520', 'title': 'Earth System Science', 'credits': 3, 'grade': 'A'},
+                {'dept': 'MTH', 'num': '573', 'title': 'Numerical Analysis', 'credits': 3, 'grade': 'A'},
+            ]
+        },
+        {
+            'term': '2023 Spring',
+            'courses': [
+                {'dept': 'PHY', 'num': '595', 'title': 'Selected Topics', 'credits': 3, 'grade': 'A',
+                 'topic': 'Topological Phases'},
+                {'dept': 'PHY', 'num': '595', 'title': 'Selected Topics', 'credits': 3, 'grade': 'A',
+                 'topic': 'Holographic Duality'},
+                {'dept': 'PHY', 'num': '631', 'title': 'Field Theory I', 'credits': 3, 'grade': 'A'},
+                {'dept': 'PHY', 'num': '699', 'title': 'Doctoral Research', 'credits': 3, 'grade': 'P'},
+            ]
+        },
+        {
+            'term': '2023 Fall',
+            'courses': [
+                {'dept': 'PHY', 'num': '595', 'title': 'Selected Topics', 'credits': 3, 'grade': 'A',
+                 'topic': 'Stochastic Dynamics'},
+                {'dept': 'PHY', 'num': '595', 'title': 'Selected Topics', 'credits': 3, 'grade': 'A',
+                 'topic': 'Nonlinear Optics'},
+                {'dept': 'GEO', 'num': '610', 'title': 'Geodynamics', 'credits': 3, 'grade': 'A'},
+                {'dept': 'GRD', 'num': '700', 'title': 'Graduate Colloquium', 'credits': 2, 'grade': 'P'},
+            ]
+        },
+        {
+            'term': '2024 Spring',
+            'courses': [
+                {'dept': 'PHY', 'num': '595', 'title': 'Selected Topics', 'credits': 3, 'grade': 'A',
+                 'topic': 'Plasma Astrophysics'},
+                {'dept': 'PHY', 'num': '595', 'title': 'Selected Topics', 'credits': 3, 'grade': 'A',
+                 'topic': 'Quantum Transport'},
+                {'dept': 'BIO', 'num': '540', 'title': 'Biophysical Methods', 'credits': 3, 'grade': 'A'},
+                {'dept': 'CHE', 'num': '525', 'title': 'Transport Phenomena', 'credits': 3, 'grade': 'A'},
+                {'dept': 'EAS', 'num': '712', 'title': 'Dissertation Research', 'credits': 3, 'grade': '', 'earned': 0},
+            ]
+        },
+    ]
+    # EAS PhD program/plan blocks drive auto-detection (the certifier keys on the Plan
+    # line); a second Physics block mimics concurrent enrollment and must not interfere.
+    eas_program_plans = [
+        ("Engineering & Applied Sci Grad",
+         "Engineering & Applied Science PhD Program of Study",
+         "Computational Science & Engineering Concentration"),
+        ("Physics Graduate", "Physics Program of Study"),
+    ]
+    create_transcript(
+        output_dir / "pass_eas_phd.pdf",
+        "Test Student 010", "999900010",
+        grad_10, include_undergrad=False,
+        grad_program_plans=eas_program_plans
+    )
+
+    print(f"\nGenerated 10 test transcripts in {output_dir}/")
 
 
 if __name__ == "__main__":
